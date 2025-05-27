@@ -26,8 +26,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         pdf = FPDF()
         pdf.add_page()
-        pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
-        pdf.set_font("DejaVu", size=12)
+        # Використовуємо стандартний шрифт Arial (підтримує Unicode)
+        pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, text)
         
         output_path = "output.pdf"
@@ -50,8 +50,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         pdf = FPDF()
         pdf.add_page()
-        pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
-        pdf.set_font("DejaVu", size=12)
+        pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, text)
         
         output_path = "text_only.pdf"

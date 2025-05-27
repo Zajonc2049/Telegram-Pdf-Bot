@@ -19,6 +19,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Надішли мені зображення або скан, і я згенерую PDF з текстом!")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+   async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await update.message.photo[-1].get_file()
     file_path = await file.download_to_drive()
     logging.info(f"Downloaded image to {file_path}")
@@ -28,7 +29,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=12)
     pdf.multi_cell(0, 10, text)
 
     output_path = "output.pdf"
@@ -37,12 +39,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open(output_path, "rb") as f:
         await update.message.reply_document(InputFile(f, filename="text.pdf"))
 
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=12)
     pdf.multi_cell(0, 10, text)
 
     output_path = "text_only.pdf"

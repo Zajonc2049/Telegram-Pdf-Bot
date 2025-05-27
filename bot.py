@@ -60,15 +60,6 @@ if __name__ == '__main__':
 
     app.run_polling()
 
-# Dockerfile
-
-FROM python:3.11-slim
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y tesseract-ocr tesseract-ocr-ukr tesseract-ocr-eng libglib2.0-0 libsm6 libxrender1 libxext6 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Create app directory
 WORKDIR /app
 
@@ -81,13 +72,3 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Start bot
 CMD ["python", "bot.py"]
-
-# requirements.txt
-python-telegram-bot==20.7
-fpdf==1.7.2
-pillow
-pytesseract
-
-# .env.example
-# Rename this to .env and set your bot token here
-BOT_TOKEN=your_telegram_bot_token_here

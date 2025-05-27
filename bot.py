@@ -59,16 +59,3 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     app.run_polling()
-
-# Create app directory
-WORKDIR /app
-
-# Copy project files
-COPY bot.py .
-
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Start bot
-CMD ["python", "bot.py"]

@@ -93,8 +93,12 @@ async def process_image_to_pdf(img_path: str, original_update: Update):
         await original_update.message.reply_text("❌ Сталася помилка під час розпізнавання тексту або створення PDF.")
         return None
     finally:
-        if os.path.exists(img_path): # Видаляємо тимчасове зображення
-             os.remove(img_path)
+        # Переконуємося, що тимчасовий файл зображення видаляється, якщо він існує
+        if 'img_path' in locals() and os.path.exists(img_path):
+             try:
+                os.remove(img_path)
+             except Exception as e_remove:
+                logger.error(f"Не вдалося видалити тимчасовий файл зображення {img_path}: {e_remove}")
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,6 +107,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     processing_msg = await update.message.reply_text("📷 Обробляю зображення...")
+    img_download_path = None # Ініціалізуємо змінну
+    pdf_path = None # Ініціалізуємо змінну
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -111,7 +117,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             img_download_path = temp_img_file.name
             await photo_file.download_to_drive(img_download_path)
 
-        pdf_path = await process_image_to_pdf(img_download_path, update) # Передаємо update для відповіді у разі помилки
+        pdf_path = await process_image_to_pdf(img_download_path, update) 
+        # img_download_path буде видалено всередині process_image_to_pdf
 
         if pdf_path:
             try:
@@ -121,14 +128,24 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         caption="📄 PDF створено з розпізнаного тексту"
                     )
             finally:
-                if os.path.exists(pdf_path):
-                    os.remove(pdf_path) # Видаляємо тимчасовий PDF
+                if os.path.exists(pdf_path): # Видаляємо тимчасовий PDF
+                    os.remove(pdf_path) 
         
         await processing_msg.delete()
 
     except Exception as e:
         logger.error(f"Помилка обробки фото: {e}")
-        await processing_msg.edit_text("❌ Помилка при обробці зображення. Спробуйте ще раз.")
+        # Перевіряємо, чи processing_msg було успішно надіслано перед спробою редагувати
+        if 'processing_msg' in locals() and processing_msg:
+            await processing_msg.edit_text("❌ Помилка при обробці зображення. Спробуйте ще раз.")
+        else:
+            await update.message.reply_text("❌ Помилка при обробці зображення. Спробуйте ще раз.")
+    finally:
+        # Додаткова перевірка для видалення файлів, якщо вони не були видалені раніше
+        if img_download_path and os.path.exists(img_download_path):
+            os.remove(img_download_path)
+        if pdf_path and os.path.exists(pdf_path):
+            os.remove(pdf_path)
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,38 +154,56 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     doc = update.message.document
+    img_download_path = None # Ініціалізуємо змінну
+    pdf_path = None # Ініціалізуємо змінну
+
     if doc.mime_type and doc.mime_type.startswith("image/"):
-        processing_msg = await update.message.reply_text(f"🖼️ Обробляю надісланий файл ({doc.file_name})...")
+        processing_msg = await update.message.reply_text(f"🖼️ Обробляю надісланий файл ({doc.file_name or 'файл'})...")
         try:
             doc_file = await doc.get_file()
             
-            # Визначаємо розширення файлу для tempfile
             file_extension = os.path.splitext(doc.file_name)[1] if doc.file_name else '.jpg'
-            if not file_extension: # Якщо розширення порожнє
-                file_extension = '.dat' # Загальне розширення
+            if not file_extension.startswith('.'): # Переконуємося, що розширення починається з точки
+                file_extension = '.' + (file_extension if file_extension else 'dat')
+
 
             with tempfile.NamedTemporaryFile(suffix=file_extension, delete=False) as temp_doc_file:
                 img_download_path = temp_doc_file.name
                 await doc_file.download_to_drive(img_download_path)
 
             pdf_path = await process_image_to_pdf(img_download_path, update)
+            # img_download_path буде видалено всередині process_image_to_pdf
 
             if pdf_path:
                 try:
                     with open(pdf_path, "rb") as f:
+                        output_filename = "ocr_document.pdf"
+                        if doc.file_name:
+                            base_name = os.path.splitext(doc.file_name)[0]
+                            output_filename = f"{base_name}_ocr.pdf"
+                        
                         await update.message.reply_document(
-                            InputFile(f, filename=f"{os.path.splitext(doc.file_name)[0]}_ocr.pdf"),
+                            InputFile(f, filename=output_filename),
                             caption="📄 PDF створено з розпізнаного тексту документа"
                         )
                 finally:
-                    if os.path.exists(pdf_path):
+                    if os.path.exists(pdf_path): # Видаляємо тимчасовий PDF
                         os.remove(pdf_path)
             
             await processing_msg.delete()
 
         except Exception as e:
             logger.error(f"Помилка обробки документа: {e}")
-            await processing_msg.edit_text("❌ Помилка при обробці файлу. Переконайтесь, що це зображення.")
+            if 'processing_msg' in locals() and processing_msg:
+                 await processing_msg.edit_text("❌ Помилка при обробці файлу. Переконайтесь, що це зображення.")
+            else:
+                await update.message.reply_text("❌ Помилка при обробці файлу. Переконайтесь, що це зображення.")
+        finally:
+            # Додаткова перевірка для видалення файлів
+            if img_download_path and os.path.exists(img_download_path):
+                os.remove(img_download_path)
+            if pdf_path and os.path.exists(pdf_path):
+                os.remove(pdf_path)
     else:
         await update.message.reply_text("⚠️ Будь ласка, надішліть зображення (як фото або файл) для перетворення в PDF.")
 
@@ -185,6 +220,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     processing_msg = await update.message.reply_text("📝 Створюю PDF з тексту...")
+    pdf_output_path = None # Ініціалізуємо змінну
     
     try:
         pdf = FPDF()
@@ -217,22 +253,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     caption="📄 PDF створено з вашого тексту"
                 )
         finally:
-            if os.path.exists(pdf_output_path):
+            if os.path.exists(pdf_output_path): # Видаляємо тимчасовий PDF
                 os.remove(pdf_output_path)
                 
         await processing_msg.delete()
         
     except Exception as e:
         logger.error(f"Помилка створення PDF з тексту: {e}")
-        await processing_msg.edit_text("❌ Помилка при створенні PDF з тексту. Спробуйте ще раз.")
+        if 'processing_msg' in locals() and processing_msg:
+            await processing_msg.edit_text("❌ Помилка при створенні PDF з тексту. Спробуйте ще раз.")
+        else:
+            await update.message.reply_text("❌ Помилка при створенні PDF з тексту. Спробуйте ще раз.")
+    finally:
+        if pdf_output_path and os.path.exists(pdf_output_path):
+            os.remove(pdf_output_path)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Логує помилки, спричинені Update."""
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
     
-    # Якщо це конфлікт (наприклад, інший екземпляр бота запущено з тим же токеном),
-    # то логуємо і намагаємося повідомити користувача, якщо можливо.
     if isinstance(context.error, Conflict):
         logger.critical("Конфлікт! Можливо, інший екземпляр бота вже запущено з цим токеном.")
         if update and hasattr(update, 'message') and hasattr(update.message, 'reply_text'):
@@ -240,84 +280,66 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
                 await update.message.reply_text("Помилка: Конфлікт з іншим екземпляром бота. Зверніться до адміністратора.")
              except Exception as e_reply:
                 logger.error(f"Не вдалося надіслати повідомлення про конфлікт: {e_reply}")
-    # Можна додати інші специфічні обробки помилок тут
-    # elif isinstance(context.error, TimedOut):
-    #     ...
-    # elif isinstance(context.error, NetworkError):
-    #     ...
 
 
 async def main() -> None:
     """Запускає бота."""
     
-    # Створення Application
-    # Використовуємо Application.builder() для більш гнучкого налаштування
     application = (
         Application.builder()
         .token(BOT_TOKEN)
-        .connection_pool_size(10) # Збільшено для потенційно більшої кількості одночасних запитів
-        .pool_timeout(30)         # Збільшено таймаути
+        .connection_pool_size(10) 
+        .pool_timeout(30)         
         .connect_timeout(30)
         .read_timeout(30)
         .write_timeout(30)
         .build()
     )
 
-    # Реєстрація обробників
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    # Додаємо обробник для документів (зображень, надісланих як файли)
     application.add_handler(MessageHandler(filters.Document.IMAGE, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    # Реєстрація обробника помилок
     application.add_error_handler(error_handler)
 
     try:
         logger.info("Запуск бота...")
-        # Видалення вебхука перед запуском в режимі polling (рекомендовано)
         await application.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Вебхук видалено (якщо був).")
 
-        # Запуск бота в режимі polling
-        # run_polling автоматично керує initialize() та shutdown()
-        # close_loop=True (за замовчуванням) є нормальним для більшості випадків
         await application.run_polling(
             allowed_updates=Update.ALL_TYPES, 
             drop_pending_updates=True,
-            # close_loop=True # Можна не вказувати, це значення за замовчуванням
         )
         
     except Conflict:
         logger.critical("Критична помилка: Конфлікт. Інший екземпляр бота вже запущено з цим токеном.")
-        # Немає потреби викликати application.stop() або sys.exit() тут,
-        # run_polling повинен завершитися сам у разі такої помилки,
-        # а платформа розгортання (Render) повинна перезапустити контейнер.
     except Exception as e:
         logger.critical(f"Фатальна помилка під час запуску або роботи бота: {e}", exc_info=True)
-        # Аналогічно, дозволяємо run_polling завершитися.
     finally:
         logger.info("Бот зупиняється або сталася помилка при запуску.")
-        # Явне завершення роботи application, якщо він був ініціалізований
-        # і run_polling не впорався з цим (малоймовірно, але для певності)
-        if application.initialized:
-             await application.shutdown()
+        # Перевіряємо, чи application було створено і чи має метод shutdown
+        if 'application' in locals() and application and hasattr(application, 'shutdown'):
+            try:
+                logger.info("Спроба викликати application.shutdown() у блоці finally.")
+                await application.shutdown()
+                logger.info("application.shutdown() успішно викликано з finally.")
+            except Exception as e_shutdown:
+                logger.error(f"Помилка під час application.shutdown() у finally: {e_shutdown}")
+        else:
+            logger.warning("Об'єкт application не був доступний або не має методу shutdown у блоці finally.")
         logger.info("Роботу завершено.")
 
 
 if __name__ == '__main__':
-    # Це стандартний спосіб запуску асинхронної програми.
-    # asyncio.run() створює новий цикл подій і запускає main().
-    # Він також обробляє KeyboardInterrupt.
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Бот зупинено користувачем (KeyboardInterrupt)")
     except RuntimeError as e:
         if "This event loop is already running" in str(e):
-            logger.warning("Спроба запустити asyncio.run() в уже запущеному циклі. Це може статися, якщо скрипт викликається з середовища, яке вже керує циклом asyncio.")
-            # У такому випадку, можливо, потрібно просто викликати main() напряму,
-            # але це залежить від середовища. Для Render `asyncio.run(main())` зазвичай є правильним.
+            logger.warning("Спроба запустити asyncio.run() в уже запущеному циклі.")
         else:
             logger.critical(f"Критична помилка виконання asyncio: {e}", exc_info=True)
     except Exception as e:

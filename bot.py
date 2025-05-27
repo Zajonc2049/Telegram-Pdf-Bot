@@ -1,5 +1,3 @@
-# bot.py
-
 import os
 import logging
 from telegram import Update, InputFile
@@ -9,7 +7,6 @@ import pytesseract
 from fpdf import FPDF
 
 logging.basicConfig(level=logging.INFO)
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Ensure tesseract is in PATH if needed (for Docker)
@@ -19,50 +16,71 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Надішли мені зображення або скан, і я згенерую PDF з текстом!")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = await update.message.photo[-1].get_file()
-    file_path = await file.download_to_drive()
-    logging.info(f"Downloaded image to {file_path}")
-
-    img = Image.open(file_path)
-    text = pytesseract.image_to_string(img, lang="ukr+eng")
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", size=12)
-    pdf.multi_cell(0, 10, text)
-
-    output_path = "output.pdf"
-    pdf.output(output_path)
-
-    with open(output_path, "rb") as f:
-        await update.message.reply_document(InputFile(f, filename="text.pdf"))
-
+    try:
+        file = await update.message.photo[-1].get_file()
+        file_path = await file.download_to_drive()
+        logging.info(f"Downloaded image to {file_path}")
+        
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img, lang="ukr+eng")
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+        pdf.set_font("DejaVu", size=12)
+        pdf.multi_cell(0, 10, text)
+        
+        output_path = "output.pdf"
+        pdf.output(output_path)
+        
+        with open(output_path, "rb") as f:
+            await update.message.reply_document(InputFile(f, filename="text.pdf"))
+            
+        # Cleanup
+        os.remove(file_path)
+        os.remove(output_path)
+        
+    except Exception as e:
+        logging.error(f"Error processing photo: {e}")
+        await update.message.reply_text("❌ Помилка при обробці зображення. Спробуйте ще раз.")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    try:
+        text = update.message.text
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+        pdf.set_font("DejaVu", size=12)
+        pdf.multi_cell(0, 10, text)
+        
+        output_path = "text_only.pdf"
+        pdf.output(output_path)
+        
+        with open(output_path, "rb") as f:
+            await update.message.reply_document(InputFile(f, filename="text.pdf"))
+            
+        # Cleanup
+        os.remove(output_path)
+        
+    except Exception as e:
+        logging.error(f"Error processing text: {e}")
+        await update.message.reply_text("❌ Помилка при створенні PDF. Спробуйте ще раз.")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", size=12)
-    pdf.multi_cell(0, 10, text)
-
-    output_path = "text_only.pdf"
-    pdf.output(output_path)
-
-    with open(output_path, "rb") as f:
-        await update.message.reply_document(InputFile(f, filename="text.pdf"))
-
-if __name__ == '__main__':
+def main():
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN не встановлено!")
+        return
+        
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    
+    # Використовуємо webhook замість polling для Render
+    PORT = int(os.environ.get("PORT", 8080))
+    app.run_webhook(listen="0.0.0.0", port=PORT, url_path=BOT_TOKEN)
 
-    app.run_polling()
+if __name__ == '__main__':
+    main()

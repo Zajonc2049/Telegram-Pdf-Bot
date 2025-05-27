@@ -27,10 +27,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             img = Image.open(temp_img.name)
             text = pytesseract.image_to_string(img, lang="ukr+eng")
             
+            # Створюємо PDF з підтримкою Unicode
             pdf = FPDF()
             pdf.add_page()
-            # Використовуємо стандартний шрифт Arial (підтримує Unicode)
-            pdf.set_font("Arial", size=12)
+            
+            # Спроба використати DejaVu шрифт, якщо є
+            try:
+                pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+                pdf.set_font("DejaVu", size=12)
+            except:
+                # Якщо шрифт не знайдено, кодуємо текст для latin-1
+                text = text.encode('latin-1', 'ignore').decode('latin-1')
+                pdf.set_font("Arial", size=12)
+                
             pdf.multi_cell(0, 10, text)
             
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
@@ -54,7 +63,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
+        
+        # Спроба використати DejaVu шрифт, якщо є
+        try:
+            pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
+            pdf.set_font("DejaVu", size=12)
+        except:
+            # Якщо шрифт не знайдено, кодуємо текст для latin-1
+            text = text.encode('latin-1', 'ignore').decode('latin-1')
+            pdf.set_font("Arial", size=12)
+            
         pdf.multi_cell(0, 10, text)
         
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:

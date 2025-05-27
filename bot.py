@@ -6,12 +6,27 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from PIL import Image
 import pytesseract
 from fpdf import FPDF
+from transliterate import translit
 
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Ensure tesseract is in PATH if needed (for Docker)
 pytesseract.pytesseract.tesseract_cmd = "tesseract"
+
+def safe_text_for_pdf(text):
+    """Безпечно обробляє текст для PDF"""
+    try:
+        # Спроба зберегти оригінальний текст
+        test_text = text.encode('latin1')
+        return text
+    except UnicodeEncodeError:
+        # Якщо не вдається, транслітеруємо українські символи
+        try:
+            return translit(text, 'uk', reversed=True)
+        except:
+            # Останній варіант - видаляємо неприпустимі символи
+            return text.encode('ascii', 'ignore').decode('ascii')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Надішли мені зображення або скан, і я згенерую PDF з текстом!")
@@ -32,12 +47,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pdf.add_page()
             
             # Спроба використати DejaVu шрифт, якщо є
+            font_loaded = False
             try:
                 pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
                 pdf.set_font("DejaVu", size=12)
+                font_loaded = True
             except:
-                # Якщо шрифт не знайдено, кодуємо текст для latin-1
-                text = text.encode('latin-1', 'ignore').decode('latin-1')
+                # Якщо шрифт не знайдено, обробляємо текст
+                text = safe_text_for_pdf(text)
                 pdf.set_font("Arial", size=12)
                 
             pdf.multi_cell(0, 10, text)
@@ -65,12 +82,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pdf.add_page()
         
         # Спроба використати DejaVu шрифт, якщо є
+        font_loaded = False
         try:
             pdf.add_font("DejaVu", "", "fonts/DejaVuSans.ttf", uni=True)
             pdf.set_font("DejaVu", size=12)
+            font_loaded = True
         except:
-            # Якщо шрифт не знайдено, кодуємо текст для latin-1
-            text = text.encode('latin-1', 'ignore').decode('latin-1')
+            # Якщо шрифт не знайдено, обробляємо текст
+            text = safe_text_for_pdf(text)
             pdf.set_font("Arial", size=12)
             
         pdf.multi_cell(0, 10, text)
